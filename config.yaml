@@ -1,0 +1,25 @@
+camera:
+  exposure_type: auto
+  f_number: 1.4
+  focal_length: 1.8
+  pixel_format: Mono16
+  target_brightness: 10
+convert:
+  gamma: 2.2
+daemon:
+  intervals: 1800
+default_exposures:
+- 3000.0
+- 300.0
+- 30.0
+- 3.0
+- 0.3
+- 0.03
+default_nb_exposures: 5
+default_step_size: 3
+image:
+  extension: tiff
+last_location:
+  alt: 51.0
+  lat: 55.7058
+  lon: 13.1932
