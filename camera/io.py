@@ -35,8 +35,8 @@ try:
         yaml.safe_dump(config, f)
 except Exception:
     LATITUDE, LONGITUDE, ALTITUDE = [
-        config['last_location']['lon'],
         config['last_location']['lat'],
+        config['last_location']['lon'],
         config['last_location']['alt']
     ]
 
@@ -208,7 +208,7 @@ def dms(decimal):
     sign = np.sign(decimal)
     decimal_degrees = abs(decimal)
 
-    degrees = int(decimal)
+    degrees = int(decimal_degrees)
     decimal_part = decimal_degrees - degrees
 
     minutes = int(decimal_part * 60)

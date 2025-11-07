@@ -1,6 +1,6 @@
 camera:
   exposure_type: auto
-  f_number: 1.4
+  f_number: 16.0
   focal_length: 1.8
   pixel_format: Mono16
   target_brightness: 10
@@ -20,6 +20,6 @@ default_step_size: 3
 image:
   extension: tiff
 last_location:
-  alt: 51.0
-  lat: 55.7058
-  lon: 13.1932
+  alt: 1200.0
+  lat: -26.3988
+  lon: 24.3270
