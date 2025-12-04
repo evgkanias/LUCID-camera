@@ -7,7 +7,7 @@ camera:
 convert:
   gamma: 2.2
 daemon:
-  intervals: 1800
+  intervals: 600
 default_exposures:
 - 3000.0
 - 300.0
@@ -20,6 +20,6 @@ default_step_size: 3
 image:
   extension: tiff
 last_location:
-  alt: 1200.0
-  lat: -26.3988
-  lon: 24.3270
+  alt: 1143.0
+  lat: -24.8833
+  lon: 28.2833

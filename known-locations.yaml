@@ -1,0 +1,24 @@
+Vryburg:
+  alt: 1200.0
+  lat: -26.3988
+  lon: 24.3270
+Bela-Bela:
+  alt: 1762.0
+  lat: -26.2023
+  lon: 28.0436
+Bela-Bela-13-11-2025:
+  alt: 1238.1
+  lat: -24.7149
+  lon: 27.9192
+Bela-Bela-open-sky:
+  alt: 1238.1
+  lat: -24.7147
+  lon: 27.9187
+Bela-Bela-sparse-trees:
+  alt: 1238.1
+  lat: -24.7146
+  lon: 27.9186
+Bela-Bela-dense-trees:
+  alt: 1238.1
+  lat: -24.7182
+  lon: 27.9206
