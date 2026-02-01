@@ -6,8 +6,12 @@ import datetime as dt
 import time
 import os
 
-from arena_api.system import system
-from arena_api.enums import PixelFormat
+try:
+    from arena_api.system import system
+    from arena_api.enums import PixelFormat
+except ImportError:
+    system = None
+    PixelFormat = None
 
 TAB1 = "  "
 TAB2 = "    "
@@ -19,7 +23,10 @@ PERC_2 = 0.05
 FNUMBER = cio.config['camera']['f_number']
 FOCAL_LENGTH = cio.config['camera']['focal_length']
 
-PIXEL_FORMAT = PixelFormat[cio.config["camera"]["pixel_format"]]
+try:
+    PIXEL_FORMAT = PixelFormat[cio.config["camera"]["pixel_format"]]
+except TypeError:
+    PIXEL_FORMAT = cio.config["camera"]["pixel_format"]
 IMG_EXT = cio.config['image']['extension']
 
 SETTINGS_KEYS = [
@@ -52,6 +59,7 @@ RESTORE_EXEMPT = [
 ]
 
 SAVE_DIR = cio.image_dir_join('HDR')
+
 
 class HDRCamera:
     def __init__(self, device=None):
@@ -292,6 +300,7 @@ class HDRCamera:
 
 STEP_SIZE = cio.config['default_step_size']
 NB_EXPOSURES = cio.config['default_nb_exposures']
+
 
 class HDRCameraAuto(HDRCamera):
 

@@ -86,6 +86,68 @@ def demosaic_bayer_simple(img):
     return rgb
 
 
+def demosaic_bayer_malvar(img):
+    r02 = img[0:-5:2, 2:-3:2]
+    g03 = img[0:-5:2, 3:-2:2]
+
+    b11 = img[1:-4:2, 1:-4:2]
+    g12 = img[1:-4:2, 2:-3:2]
+    b13 = img[1:-4:2, 3:-2:2]
+    g14 = img[1:-4:2, 4:-1:2]
+
+    r20 = img[2:-3:2, 0:-5:2]
+    g21 = img[2:-3:2, 1:-4:2]
+    r22 = img[2:-3:2, 2:-3:2]
+    g23 = img[2:-3:2, 3:-2:2]
+    r24 = img[2:-3:2, 4:-1:2]
+    g25 = img[2:-3:2, 5::2]
+
+    g30 = img[3:-2:2, 0:-5:2]
+    b31 = img[3:-2:2, 1:-4:2]
+    g32 = img[3:-2:2, 2:-3:2]
+    b33 = img[3:-2:2, 3:-2:2]
+    g34 = img[3:-2:2, 4:-1:2]
+    b35 = img[3:-2:2, 5::2]
+
+    g41 = img[4:-1:2, 1:-4:2]
+    r42 = img[4:-1:2, 2:-3:2]
+    g43 = img[4:-1:2, 3:-2:2]
+    r44 = img[4:-1:2, 4:-1:2]
+
+    g52 = img[5::2, 2:-3:2]
+    b53 = img[5::2, 3:-2:2]
+
+    R00 = 8 * r22
+    G00 = 4 * r22 + 2 * (g12 + g21 + g23 + g32) - (r02 + r20 + r24 + r42)
+    B00 = 6 * r22 + 2 * (b11 + b13 + b31 + b33) - 1.5 * (r20 + r24 + r02 + r42)
+
+    R01 = 5 * g32 + 4 * (r22 + r42) - (g12 + g52 + g21 + g41 + g23 + g43) + 0.5 * (g30 + g34)
+    G01 = 8 * g23
+    B01 = 5 * g32 + 4 * (b31 + b33) - (g30 + g34 + g21 + g41 + g23 + g43) + 0.5 * (g12 + g52)
+
+    R10 = 5 * g23 + 4 * (r22 + r24) - (g21 + g25 + g12 + g14 + g32 + g34) + 0.5 * (g03 + g43)
+    G10 = 8 * g32
+    B10 = 5 * g23 + 4 * (b13 + b33) - (g03 + g43 + g12 + g41 + g32 + g34) + 0.5 * (g21 + g25)
+
+    R11 = 6 * b33 + 2 * (r22 + r24 + r42 + r44) - 1.5 * (b31 + b35 + b13 + b53)
+    G11 = 4 * b33 + 2 * (g23 + g32 + g34 + g43) - (b13 + b31 + b35 + b53)
+    B11 = 8 * b33
+
+    rgb00 = np.transpose([R00, G00, B00], axes=(1, 2, 0)) / 8
+    rgb01 = np.transpose([R01, G01, B01], axes=(1, 2, 0)) / 8
+    rgb10 = np.transpose([R10, G10, B10], axes=(1, 2, 0)) / 8
+    rgb11 = np.transpose([R11, G11, B11], axes=(1, 2, 0)) / 8
+
+    rgb = np.empty((rgb00.shape[0] + rgb01.shape[0], rgb10.shape[1] + rgb11.shape[1], rgb00.shape[2]),
+                   dtype=img.dtype)
+    rgb[0::2, 0::2] = rgb00
+    rgb[1::2, 0::2] = rgb01
+    rgb[0::2, 1::2] = rgb10
+    rgb[1::2, 1::2] = rgb11
+
+    return rgb
+
+
 def demosaic_bayer_cv(img):
     # Assumes BGGR Bayer pattern
     return cv2.cvtColor(img, cv2.COLOR_BAYER_RG2RGB)

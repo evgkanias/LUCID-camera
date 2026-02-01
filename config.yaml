@@ -20,6 +20,6 @@ default_step_size: 3
 image:
   extension: tiff
 last_location:
-  alt: 1143.0
-  lat: -24.8833
-  lon: 28.2833
+  alt: 51.0
+  lat: 55.7058
+  lon: 13.1932

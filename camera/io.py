@@ -6,7 +6,6 @@ import geocoder
 import requests
 import piexif
 import yaml
-import cv2
 import os
 import re
 
@@ -152,7 +151,7 @@ def get_exif_bytes(meta):
         deg_lat, min_lat, sec_lat, sig_lat = dms(meta['Latitude'])
         deg_lon, min_lon, sec_lon, sig_lon = dms(meta['Longitude'])
 
-        exif["GPS"] =  {
+        exif["GPS"] = {
             piexif.GPSIFD.GPSLatitudeRef: 'N' if sig_lat >= 0 else 'S',
             piexif.GPSIFD.GPSLatitude: (rational(deg_lat, 1), rational(min_lat, 1), rational(sec_lat, 100)),
             piexif.GPSIFD.GPSLongitudeRef: 'E' if sig_lon >= 0 else 'W',

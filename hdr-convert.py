@@ -13,6 +13,9 @@ import argparse
 
 GAMMA_CORRECTION = cio.config['convert']['gamma']
 LOG_FILE = cio.log_dir_join(f'{dt.datetime.now().strftime("%Y%m%d-%H%M%S")}-hdr-convert.log')
+UINT16_MAX = 65520.0
+ORDERED_ANGLES = [0, 45, 90, 135]
+# /Volumes/T9/SA2025/Q1 Experimental Setups/EG_Q4_A1_20251119070450
 
 
 # Function to add color map disk legend at bottom right
@@ -48,6 +51,7 @@ def add_colormap_disk(img, radius=48, margin=10):
     img_out[y1:y2, x1:x2] = roi
     return img_out
 
+
 # Function to map angle and DoLP to HSV and then to BGR
 def angle_dolp_to_rgb(angle_channel, dolp_channel):
     hue = np.round((np.nan_to_num(angle_channel, nan=0) % 180) / 180.0 * 179).astype(np.uint8)
@@ -59,12 +63,14 @@ def angle_dolp_to_rgb(angle_channel, dolp_channel):
     rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
     return rgb
 
+
 def dop_to_rgb(dop):
     return (np.clip(np.nan_to_num(dop, nan=0), 0, 1) * 65535).astype(np.uint16)
 
+
 def main(directory=None, overwrite=False, yes_to_all=False):
     if directory is None:
-        directory = input("Enter the directory containing the images (empty to process all): ").strip()
+        directory = input("Enter the directory containing the images (empty to process all): ").strip().replace("'", "")
 
     if directory in ["", "last"]:
         directories = []
@@ -128,12 +134,11 @@ def main(directory=None, overwrite=False, yes_to_all=False):
             continue
 
         img_pol = {'000': [], '045': [], '090': [], '135': []}
-        for image in images:    
-            # Extract polarisation from raw images
+        for image in images:
             img_pol_ = trans.demosaic_polarisation(image)
             for ang in img_pol_:
                 # Extact RGB from polarisation images
-                img_pol_rgb = trans.demosaic_bayer(img_pol_[ang])
+                img_pol_rgb = trans.demosaic_bayer_malvar(img_pol_[ang])
                 img_pol[ang].append(img_pol_rgb)
 
         exposures = np.array([meta['ExposureTime'] for meta in metas], dtype=np.float32)
@@ -153,7 +158,6 @@ def main(directory=None, overwrite=False, yes_to_all=False):
             hdr[ang] = tonemap.process(hdr_)
             ldr16 = np.clip(np.nan_to_num(hdr[ang], nan=0) * 65535, 0, 65535).astype(np.uint16)
             cio.save_image(os.path.join(dir_, f'image_HDR_{ang}.tiff'), ldr16, meta=meta)
-            # cio.save_image_cv2(os.path.join(dir_, f'image_HDR_{ang}.tiff'), ldr16)
 
         # Compute Stokes parameters per channel
         stokes = trans.get_stokes(hdr)
@@ -161,7 +165,6 @@ def main(directory=None, overwrite=False, yes_to_all=False):
             s_norm = cv2.normalize(stokes[st], None, 0, 65535, cv2.NORM_MINMAX)
             st16 = np.nan_to_num(s_norm, nan=0).astype(np.uint16)
             cio.save_image(os.path.join(dir_, f'image_HDR_{st}.tiff'), st16, meta=meta)
-            # cio.save_image_cv2(os.path.join(dir_, f'image_HDR_{st}.tiff'), st16)
 
         # Angle and degree of polarisation per channel
         angle = trans.get_polarisation_angle(stokes)
@@ -185,6 +188,7 @@ def main(directory=None, overwrite=False, yes_to_all=False):
         lg.logger.success(f"All HDR images are processed in {dir_}")
 
     lg.logger.success("HDR polarisation processing complete.")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="HDR Image Converter")
