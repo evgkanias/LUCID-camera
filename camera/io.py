@@ -63,7 +63,7 @@ def get_session_path(directory, date=None):
 
 
 def get_raw_image_files(directory):
-    return sorted([f for f in os.listdir(directory) if re.match(r'image\d+\.tiff$', f)])
+    return sorted([f for f in os.listdir(directory) if re.match(r'image_?\d+\.tiff$', f)])
 
 
 def read_raw_images(directory):
