@@ -105,8 +105,8 @@ class Camera:
             if self.nodes['ExposureAuto'].value != 'Off':
                 lg.logger.debug(f'ExposureAuto old value = {self.nodes["ExposureAuto"].value}')
                 self.nodes['ExposureAuto'].value = 'Off'
-        elif self.nodes['ExposureAuto'].value != 'On':
-            self.nodes['ExposureAuto'].value = 'On'
+        elif self.nodes['ExposureAuto'].value == 'Off':
+            self.nodes['ExposureAuto'].value = 'Continuous'
             lg.logger.debug(f'ExposureAuto is set to  "{self.nodes["ExposureAuto"].value}"')
 
         # Get exposure time and software trigger nodes
@@ -115,7 +115,7 @@ class Camera:
         if self.nodes['ExposureTime'] is None or self.nodes['TriggerSoftware'] is None:
             raise Exception('ExposureTime or TriggerSoftware node is not available')
 
-        if not self.nodes['ExposureTime'].is_writable or not self.nodes['TriggerSoftware'].is_writable:
+        if not self.nodes['TriggerSoftware'].is_writable:
             raise Exception('ExposureTime or TriggerSoftware node is not writable')
 
         # setup stream values
@@ -153,7 +153,7 @@ class Camera:
         else:
             identity = f"{identity}"
 
-        if not (self.nodes['ExposureTime'].value - 1e-4 < exposure < self.nodes['ExposureTime'].value + 1e-4):
+        if exposure is not None and not (self.nodes['ExposureTime'].value - 1e-4 < exposure < self.nodes['ExposureTime'].value + 1e-4):
             # Set frame rate
             min_frame_rate = self.nodes['AcquisitionFrameRate'].min
             max_frame_rate = self.nodes['AcquisitionFrameRate'].max
