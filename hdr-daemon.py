@@ -28,11 +28,13 @@ TIME_STR = DATE_START.strftime(r'%H%M%S')
 SAVE_DIR = cio.image_dir_join("Daemon")
 LOG_FILE = cio.log_dir_join(f'{DATE_STR}-{TIME_STR}-hdr-daemon.log')
 
+
 def user_input_listener(stop_event):
     while not stop_event.is_set():
         user_input = input("Type 'exit' or 'quit' and then 'Enter' at any time to terminate the process\n")
         if user_input.strip().lower() in ("exit", "quit"):
             stop_event.set()
+
 
 def main():
     stop_event = threading.Event()

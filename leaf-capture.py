@@ -1,11 +1,16 @@
 import camera
 import camera.io as cio
+import camera.transform as trans
+
 import argparse as ap
 import loguru as lg
 import datetime as dt
+import numpy as np
+import cv2
 import sys
 import os
 
+camera.SAVE_DIR = cio.image_dir_join('Leaf')
 LOG_FILE = os.path.join(cio.LOGS_DIR, f"{dt.datetime.now().strftime(r'%Y%m%d-%H%M%S')}-leaf-capture.log")
 
 parser = ap.ArgumentParser(
@@ -28,6 +33,9 @@ parser.add_argument('-ie', '--image-extension',
                          f' jpeg, jpg, bmp, raw, ply, tiff, png; default is "{camera.IMG_EXT}"')
 parser.add_argument('-sd', '--save-directory',
                     help=f'set the directory where to save the images; default is in "{camera.SAVE_DIR}"')
+parser.add_argument('-tr', '--transform-images',
+                    help=f'flag to transform all the images')
+
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -69,6 +77,48 @@ if __name__ == '__main__':
     exposure = args.exposure
 
     cam = camera.Camera()
+    session_dir = os.path.join(camera.SAVE_DIR, cam.timestamp)
+
+    pol_angs = []
 
     while (pol_ang := input("Enter the angle of polarisation: ")) not in ["", "exit", "quite"]:
         cam(exposure, identity=pol_ang)
+        pol_angs.append(pol_ang)
+    lg.logger.success(f"Captured {len(pol_angs)} images and saved in {session_dir}")
+
+    if args.transform_images:
+        lg.logger.info(f"Transforming all images in {session_dir}")
+        for pol_ang in pol_angs:
+            img_path = os.path.join(session_dir, f"image_{pol_ang}.{camera.IMG_EXT}")
+            img, meta = cio.read_raw_image(img_path)
+
+            img_pol = trans.demosaic_polarisation(img)
+            for ang in img_pol:
+                # Extact RGB from polarisation images
+                img_pol[ang] = trans.demosaic_bayer_malvar(img_pol[ang])
+
+            stokes = trans.get_stokes(img_pol)
+            for st in stokes:
+                s_norm = cv2.normalize(stokes[st], None, 0, 65535, cv2.NORM_MINMAX)
+                st16 = np.nan_to_num(s_norm, nan=0).astype(np.uint16)
+                cio.save_image(os.path.join(session_dir, f'image_{pol_ang}_{st}.tiff'), st16, meta=meta)
+
+            # Angle and degree of polarisation per channel
+            angle = trans.get_polarisation_angle(stokes)
+            angle_deg = np.degrees(angle)
+            DoLP = trans.get_polarisation_degree(stokes)
+
+            colours = ['red', 'green', 'blue']
+            for c, colour in enumerate(colours):
+                rgb = trans.angle_dolp_to_rgb(angle_deg[..., c], DoLP[..., c])
+                rgb = trans.add_colormap_disk(rgb)
+
+                # Save image
+                out_path = os.path.join(session_dir, f'image_{pol_ang}_AOP_{colour}.tiff')
+                cio.save_image(out_path, rgb, meta=meta)
+                # cio.save_image_cv2(out_path, rgb)
+
+            dop_rgb = trans.dop_to_rgb(DoLP)
+            out_path = os.path.join(session_dir, f'image_{pol_ang}_DOP.tiff')
+            cio.save_image(out_path, dop_rgb, meta=meta)
+            lg.logger.success(f"All images are processed in {session_dir}")

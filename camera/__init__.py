@@ -92,6 +92,7 @@ class Camera:
         self.nodes['TargetBrightness'].value = int(cio.config['camera']['target_brightness'])
 
         self.timestamp = get_timestamp()
+        self._meta = {}
 
     def __call__(self, exposure=None, identity=None):
         lg.logger.info('Acquire images example started')
@@ -134,10 +135,9 @@ class Camera:
         t_start = tic()
         self._device.start_stream()
 
-        meta = {}
-        meta[f'image_{identity}'] = self.acquire_and_save_buffer(exposure, identity=identity)
-        meta['pixel_format'] = PIXEL_FORMAT.name
-        cio.save_metadata(session_dir, meta)
+        self._meta[f'image_{identity}'] = self.acquire_and_save_buffer(exposure, identity=identity)
+        self._meta['pixel_format'] = PIXEL_FORMAT.name
+        cio.save_metadata(session_dir, self._meta)
 
         self._device.stop_stream()
         t_end = toc(t_start)

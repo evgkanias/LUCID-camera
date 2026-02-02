@@ -48,8 +48,10 @@ if not os.path.exists('logs'):
 def image_dir_join(*path):
     return os.path.join(IMGS_DIR, *path)
 
+
 def log_dir_join(*path):
     return os.path.join(LOGS_DIR, *path)
+
 
 def get_session_path(directory, date=None):
     if date is None:
@@ -59,8 +61,10 @@ def get_session_path(directory, date=None):
     os.makedirs(dir_path, exist_ok=True)
     return dir_path
 
+
 def get_raw_image_files(directory):
     return sorted([f for f in os.listdir(directory) if re.match(r'image\d+\.tiff$', f)])
+
 
 def read_raw_images(directory):
     files = get_raw_image_files(directory)
@@ -69,28 +73,35 @@ def read_raw_images(directory):
     for fname in files:
         path = os.path.join(directory, fname)
 
-        # transform to real number
-        pil_img = Image.open(path)
-        assert pil_img.mode in ['I;16', 'L'], f'Image mode is {pil_img.mode}, expected single channel image.'
-        
-        # check image mode
-        if pil_img.mode == 'I;16':
-            dtype = np.float64
-            max_val = 65535.0
-        elif pil_img.mode == 'L':
-            dtype = np.float32
-            max_val = 255.0
-        
-        img = np.array(Image.open(path), dtype=dtype) / max_val
-        
-        if img is None or img.ndim != 2:
-            lg.logger.error(f"Image not found or not single channel: {path}")
-            continue
-        
-        meta_dict = get_meta(piexif.load(path))
-        images.append(img[:, ::-1])
-        metas.append(meta_dict)
+        img, meta_dict = read_raw_image(path)
+        if img is not None and meta_dict is not None:
+            images.append(img)
+            metas.append(meta_dict)
+
     return images, metas, files
+
+
+def read_raw_image(img_path):
+    # transform to real number
+    pil_img = Image.open(img_path)
+    assert pil_img.mode in ['I;16', 'L'], f'Image mode is {pil_img.mode}, expected single channel image.'
+
+    # check image mode
+    if pil_img.mode == 'I;16':
+        dtype = np.float64
+        max_val = 65535.0
+    elif pil_img.mode == 'L':
+        dtype = np.float32
+        max_val = 255.0
+
+    img = np.array(Image.open(img_path), dtype=dtype) / max_val
+
+    if img is None or img.ndim != 2:
+        lg.logger.error(f"Image not found or not single channel: {img_path}")
+        return None, None
+
+    return img[:, ::-1], get_meta(piexif.load(img_path))
+
 
 def save_image(path, img, meta=None):
     lg.logger.debug(f'Saving image...')
@@ -118,6 +129,7 @@ def save_image(path, img, meta=None):
         exif = get_exif_bytes(meta)
     pil_img.save(path, exif=exif, compression=None)
     lg.logger.debug(f'Saved image at {path}')
+
 
 def get_exif_bytes(meta):
         exif = {"0th": {}, "Exif": {}, "GPS": {}}
@@ -163,6 +175,7 @@ def get_exif_bytes(meta):
         exif_bytes = piexif.dump(exif)
         return exif_bytes
 
+
 def get_meta(exif):
     # Camera info
     meta = {
@@ -197,11 +210,13 @@ def get_meta(exif):
         
     return meta
 
+
 def save_metadata(dir_path, meta):
     path = os.path.join(dir_path, 'info.txt')
     with open(path, 'w') as f:
         yaml.safe_dump(meta, f)
     lg.logger.debug(f'Saved metadata at: {path}.')
+
 
 def dms(decimal):
     sign = np.sign(decimal)
@@ -217,15 +232,18 @@ def dms(decimal):
 
     return degrees, minutes, seconds, sign
 
+
 def undms(degrees, minutes, seconds, sign):
     """Convert DMS (degrees, minutes, seconds, sign) back to decimal degrees."""
     decimal = float(np.round(abs(degrees) + minutes / 60.0 + seconds / 3600.0, decimals=4))
     return sign * decimal
 
+
 def rational(value, precision=100000):
     numerator = int(np.round(value * precision))
     denominator = precision
     return (numerator, denominator)
+
 
 def unrational(*rational_tuple):
     """Convert a rational tuple (numerator, denominator) back to float."""

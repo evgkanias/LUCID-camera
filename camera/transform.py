@@ -190,3 +190,53 @@ def get_polarisation_angle(stokes):
 
 def get_polarisation_degree(stokes):
     return np.clip(np.sqrt(np.square(stokes['S1']) + np.square(stokes['S2'])), 0, 1)
+
+
+# Function to add color map disk legend at bottom right
+def add_colormap_disk(img, radius=48, margin=10):
+    disk_size = radius * 2
+    legend = np.zeros((disk_size, disk_size, 3), dtype=np.uint8)
+    cy, cx = radius, radius
+    y, x = np.ogrid[:disk_size, :disk_size]
+    mask = (x - cx)**2 + (y - cy)**2 <= radius**2
+    angles = (np.arctan2((y - cy), -(x - cx)) * 180 / np.pi) % 180  # 0-180 deg
+    hue = ((angles / 180.0) * 179).astype(np.uint8)
+    value = np.ones_like(hue, dtype=np.uint8) * 255
+    hsv = np.zeros_like(legend)
+    hsv[..., 0] = hue
+    hsv[..., 1] = 255
+    hsv[..., 2] = value
+    legend_bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+    legend[mask] = legend_bgr[mask]
+    # Transparent background outside disk
+    legend[~mask] = img[0,0] if img.ndim == 3 else 0
+
+    # Place legend at bottom right
+    h, w = img.shape[:2]
+    img_out = img.copy()
+    y1 = h - disk_size - margin
+    y2 = h - margin
+    x1 = w - disk_size - margin
+    x2 = w - margin
+    # Blend disk with background if needed
+    mask3 = np.stack([mask]*3, axis=-1)
+    roi = img_out[y1:y2, x1:x2]
+    roi[mask3] = legend[mask3]
+    img_out[y1:y2, x1:x2] = roi
+    return img_out
+
+
+# Function to map angle and DoLP to HSV and then to BGR
+def angle_dolp_to_rgb(angle_channel, dolp_channel):
+    hue = np.round((np.nan_to_num(angle_channel, nan=0) % 180) / 180.0 * 179).astype(np.uint8)
+    value = (np.clip(np.nan_to_num(dolp_channel, nan=0), 0, 1) * 255).astype(np.uint8)
+    hsv = np.zeros((*hue.shape, 3), dtype=np.uint8)
+    hsv[..., 0] = hue
+    hsv[..., 1] = 255
+    hsv[..., 2] = value
+    rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+    return rgb
+
+
+def dop_to_rgb(dop):
+    return (np.clip(np.nan_to_num(dop, nan=0), 0, 1) * 65535).astype(np.uint16)
