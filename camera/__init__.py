@@ -149,7 +149,7 @@ class Camera:
         if identity is None:
             identity = ""
         elif isinstance(identity, int):
-            identity = f"{identity + 1}"
+            identity = f"{identity}"
         else:
             identity = f"{identity}"
 
@@ -352,11 +352,10 @@ class HDRCamera(Camera):
         t_start = tic()
         self._device.start_stream()
 
-        meta = {}
         for i, exposure in enumerate(exposures):
-            meta[f'image_{i}'] = self.acquire_and_save_buffer(exposure, identity=i)
-        meta['pixel_format'] = PIXEL_FORMAT.name
-        cio.save_metadata(session_dir, meta)
+            self._meta[f'image_{i}'] = self.acquire_and_save_buffer(exposure, identity=i)
+        self._meta['pixel_format'] = PIXEL_FORMAT.name
+        cio.save_metadata(session_dir, self._meta)
 
         self._device.stop_stream()
         t_end = toc(t_start)
