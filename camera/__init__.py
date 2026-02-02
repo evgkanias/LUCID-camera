@@ -146,8 +146,7 @@ class Camera:
 
     def acquire_and_save_buffer(self, exposure, count=0):
         buf = []
-        if (self.nodes['ExposureTime'].value - 1e-4 < exposure < self.nodes['ExposureTime'].value + 1e-4 and
-                self.nodes['ExposureAuto'].value == 'Off'):
+        if not (self.nodes['ExposureTime'].value - 1e-4 < exposure < self.nodes['ExposureTime'].value + 1e-4):
             # Set frame rate
             min_frame_rate = self.nodes['AcquisitionFrameRate'].min
             max_frame_rate = self.nodes['AcquisitionFrameRate'].max
