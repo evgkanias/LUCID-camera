@@ -1,31 +1,23 @@
 import camera
 import camera.io as cio
-
 import argparse as ap
 import loguru as lg
 import datetime as dt
 import sys
 import os
 
-DEFAULT_EXPOSURES = cio.config['default_exposures']  # in milliseconds
-EXPOSURE_TYPE = cio.config['camera']['exposure_type'].lower()  # 'auto' or 'manual'
-
-LOG_FILE = os.path.join(cio.LOGS_DIR, f"{dt.datetime.now().strftime(r'%Y%m%d-%H%M%S')}-hdr-capture.log")
+LOG_FILE = os.path.join(cio.LOGS_DIR, f"{dt.datetime.now().strftime(r'%Y%m%d-%H%M%S')}-leaf-capture.log")
 
 parser = ap.ArgumentParser(
-    prog='LUCID Polarisation Camera HDR',
+    prog='LUCID Polarisation Camera leaf capture',
     description='This programme connects to a LUCID camera with a polarised light sensor and allows capturing a series '
-                'of images with different exposures, enabling a high dynamic range (HDR) for each polarisation angle.',
-    epilog='Copyright (c) Evripidis Gkanias, 2025',
+                'of images from a leaf with a rotating polariser above it.',
+    epilog='Copyright (c) Evripidis Gkanias, 2026',
     add_help=True
 )
 
-parser.add_argument('-e', '--exposures', nargs='*', type=float,
-                    help=f'set a list of exposures (in milliseconds); default is {DEFAULT_EXPOSURES}')
-parser.add_argument('-s', '--step-size', type=int,
-                    help=f'set the step size among the exposures when using auto-exposure; default is {camera.STEP_SIZE}')
-parser.add_argument('-n', '--number-exposures', type=int,
-                    help=f'set the number of exposures when using auto-exposure; default is {camera.NB_EXPOSURES}')
+parser.add_argument('-e', '--exposure', type=float, default=None,
+                    help=f'set the exposure (in milliseconds); default is None')
 parser.add_argument('-pl', '--print-level', default='INFO',
                     help='set the level of information to print: INFO mode prints the basic outputs, DEBUG mode prints '
                          'more outputs for debugging, and ERROR mode prints only the errors; default is INFO')
@@ -36,7 +28,6 @@ parser.add_argument('-ie', '--image-extension',
                          f' jpeg, jpg, bmp, raw, ply, tiff, png; default is "{camera.IMG_EXT}"')
 parser.add_argument('-sd', '--save-directory',
                     help=f'set the directory where to save the images; default is in "{camera.SAVE_DIR}"')
-
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -49,10 +40,10 @@ if __name__ == '__main__':
     if args.pixel_format is not None:
         valid_keys = [
             key for key in camera.PixelFormat.__dict__.keys() if
-            key.startswith("Polarized") or 
+            key.startswith("Polarized") or
             key.startswith("Bayer") or
             key.startswith("Mono")
-            ]
+        ]
         assert args.pixel_format in valid_keys, (
             f"Pixel format is not supported. Available options are {', '.join(valid_keys)}"
         )
@@ -73,30 +64,11 @@ if __name__ == '__main__':
             lg.logger.debug(f'Directory has been created: "{camera.SAVE_DIR}".')
         lg.logger.info(f'Directory is set as "{camera.SAVE_DIR}".')
 
-    if EXPOSURE_TYPE == 'manual':
-        lg.logger.info('Using manual exposure mode.')
-        if args.exposures is not None:
-            exposures = args.exposures
-        else:
-            exposures = DEFAULT_EXPOSURES
-        
-        cam = camera.HDRCamera()
-        cam(*exposures)
-    elif EXPOSURE_TYPE == 'auto':
+    if args.exposure is None:
         lg.logger.info('Using auto exposure mode.')
-        if args.step_size is not None:
-            step_size = args.step_size
-        else:
-            step_size = None
+    exposure = args.exposure
 
-        if args.number_exposures is not None:
-            nb_exposures = args.number_exposures
-        else:
-            nb_exposures = None
-        if args.exposures is None:
-            exposures = []
-        else:
-            exposures = args.exposures
+    cam = camera.Camera()
 
-        cam = camera.HDRCameraAuto()
-        cam(*exposures, step_size=step_size, nb_exposures=nb_exposures)
+    while (pol_ang := input("Enter the angle of polarisation: ")) not in ["", "exit", "quite"]:
+        cam(exposure, identity=pol_ang)

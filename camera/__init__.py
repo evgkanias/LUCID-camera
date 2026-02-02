@@ -93,7 +93,7 @@ class Camera:
 
         self.timestamp = get_timestamp()
 
-    def __call__(self, exposure=None):
+    def __call__(self, exposure=None, identity=None):
         lg.logger.info('Acquire images example started')
 
         if exposure is not None:
@@ -135,7 +135,7 @@ class Camera:
         self._device.start_stream()
 
         meta = {}
-        meta[f'image_0'] = self.acquire_and_save_buffer(exposure)
+        meta[f'image_{identity}'] = self.acquire_and_save_buffer(exposure, identity=identity)
         meta['pixel_format'] = PIXEL_FORMAT.name
         cio.save_metadata(session_dir, meta)
 
@@ -144,8 +144,15 @@ class Camera:
         lg.logger.success(f'{TAB1}Acquired and saved an image in {t_end:.3f} sec')
         lg.logger.success(f'{TAB1}Location: {session_dir}')
 
-    def acquire_and_save_buffer(self, exposure, count=0):
+    def acquire_and_save_buffer(self, exposure, identity=None):
         buf = []
+        if identity is None:
+            identity = ""
+        elif isinstance(identity, int):
+            identity = f"{identity + 1}"
+        else:
+            identity = f"{identity}"
+
         if not (self.nodes['ExposureTime'].value - 1e-4 < exposure < self.nodes['ExposureTime'].value + 1e-4):
             # Set frame rate
             min_frame_rate = self.nodes['AcquisitionFrameRate'].min
@@ -162,7 +169,7 @@ class Camera:
                 lg.logger.debug(f'{TAB2}Set exposure at    = {exposure / 1e6:.2f} sec')
 
             # Set exposure time
-            lg.logger.info(f'Getting image {count + 1} with exposure time {exposure * 1e-6:9,.6f} sec')
+            lg.logger.info(f'Getting image {identity} with exposure time {exposure * 1e-6:9,.6f} sec')
             self.nodes['ExposureTime'].value = exposure
 
             self.trigger_software_once_armed()
@@ -199,7 +206,9 @@ class Camera:
         meta = self.get_meta(timestamp)
 
         # Save RAW image as a TIF
-        img_path = os.path.join(SAVE_DIR, self.timestamp, f"image{count}.{IMG_EXT}")
+        if identity != "":
+            identity = f"_{identity}"
+        img_path = os.path.join(SAVE_DIR, self.timestamp, f"image{identity}.{IMG_EXT}")
         cio.save_image(img_path, img_data, meta=meta)
         lg.logger.debug(f'{TAB2}in {toc(t_start):.2f} sec: {os.path.abspath(img_path)}')
 
@@ -345,7 +354,7 @@ class HDRCamera(Camera):
 
         meta = {}
         for i, exposure in enumerate(exposures):
-            meta[f'image_{i}'] = self.acquire_and_save_buffer(exposure, count=i)
+            meta[f'image_{i}'] = self.acquire_and_save_buffer(exposure, identity=i)
         meta['pixel_format'] = PIXEL_FORMAT.name
         cio.save_metadata(session_dir, meta)
 
