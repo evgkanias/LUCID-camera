@@ -61,16 +61,16 @@ RESTORE_EXEMPT = [
 SAVE_DIR = cio.image_dir_join('HDR')
 
 
-class HDRCamera:
+class Camera:
     def __init__(self, device=None):
         devices = create_devices_with_tries()
         if device is None:
             device = 0
-        self._device = devices[0]
+        self._device = devices[device]
 
         self._nodemap = self._device.nodemap
         self.nodes = self._nodemap.get_node(SETTINGS_KEYS)
-        
+
         # Save initial settings to restore later
         self._initial_settings = self._store_initial()
 
@@ -92,7 +92,212 @@ class HDRCamera:
         self.nodes['TargetBrightness'].value = int(cio.config['camera']['target_brightness'])
 
         self.timestamp = get_timestamp()
-        
+
+    def __call__(self, exposure=None):
+        lg.logger.info('Acquire images example started')
+
+        if exposure is not None:
+            exposure *= 1e3  # convert to microseconds
+            lg.logger.info(f'{TAB1}Using exposure (in sec): {exposure * 1e-6:.6f}')
+
+            # Disable automatic exposure
+            lg.logger.debug(f'{TAB1}Disable automatic exposure')
+            if self.nodes['ExposureAuto'].value != 'Off':
+                lg.logger.debug(f'ExposureAuto old value = {self.nodes["ExposureAuto"].value}')
+                self.nodes['ExposureAuto'].value = 'Off'
+        elif self.nodes['ExposureAuto'].value != 'On':
+            self.nodes['ExposureAuto'].value = 'On'
+            lg.logger.debug(f'ExposureAuto is set to  "{self.nodes["ExposureAuto"].value}"')
+
+        # Get exposure time and software trigger nodes
+        lg.logger.debug(f'{TAB1}Get exposure time and software trigger nodes')
+
+        if self.nodes['ExposureTime'] is None or self.nodes['TriggerSoftware'] is None:
+            raise Exception('ExposureTime or TriggerSoftware node is not available')
+
+        if not self.nodes['ExposureTime'].is_writable or not self.nodes['TriggerSoftware'].is_writable:
+            raise Exception('ExposureTime or TriggerSoftware node is not writable')
+
+        # setup stream values
+        tl_stream_nodemap = self._device.tl_stream_nodemap
+        tl_stream_nodemap['StreamAutoNegotiatePacketSize'].value = True
+        tl_stream_nodemap['StreamPacketResendEnable'].value = True
+
+        # acquire and save images
+        lg.logger.debug(f'{TAB1}Acquire and save image')
+
+        # create directory for the images
+        session_dir = os.path.join(SAVE_DIR, self.timestamp)
+        if not os.path.exists(session_dir):
+            os.makedirs(session_dir)
+
+        t_start = tic()
+        self._device.start_stream()
+
+        meta = {}
+        meta[f'image_0'] = self.acquire_and_save_buffer(exposure)
+        meta['pixel_format'] = PIXEL_FORMAT.name
+        cio.save_metadata(session_dir, meta)
+
+        self._device.stop_stream()
+        t_end = toc(t_start)
+        lg.logger.success(f'{TAB1}Acquired and saved an image in {t_end:.3f} sec')
+        lg.logger.success(f'{TAB1}Location: {session_dir}')
+
+    def acquire_and_save_buffer(self, exposure, count=0):
+        buf = []
+        if (self.nodes['ExposureTime'].value - 1e-4 < exposure < self.nodes['ExposureTime'].value + 1e-4 and
+                self.nodes['ExposureAuto'].value == 'Off'):
+            # Set frame rate
+            min_frame_rate = self.nodes['AcquisitionFrameRate'].min
+            max_frame_rate = self.nodes['AcquisitionFrameRate'].max
+            frame_rate = np.clip(1e6 / exposure, min_frame_rate, max_frame_rate)
+            self.nodes['AcquisitionFrameRate'].value = frame_rate
+            lg.logger.debug(f'{TAB2}Set frame rate at  = {frame_rate:.2f} Hz')
+
+            if exposure > self.nodes['ExposureTime'].max or exposure < self.nodes['ExposureTime'].min:
+                lg.logger.debug(
+                    f'{TAB2}Exposure time should be in range {self.nodes["ExposureTime"].min} - {self.nodes["ExposureTime"].max} us, '
+                    f'but got {exposure} us.')
+                exposure = np.clip(exposure, self.nodes['ExposureTime'].min, self.nodes['ExposureTime'].max)
+                lg.logger.debug(f'{TAB2}Set exposure at    = {exposure / 1e6:.2f} sec')
+
+            # Set exposure time
+            lg.logger.info(f'Getting image {count + 1} with exposure time {exposure * 1e-6:9,.6f} sec')
+            self.nodes['ExposureTime'].value = exposure
+
+            self.trigger_software_once_armed()
+            buf.append(self._device.get_buffer())
+
+        t_start = tic()
+
+        # after the exposure time is set, the setting does not take place on the device until the next frame.
+        # thus, two images are retrieved, and we use the second one.
+        self.trigger_software_once_armed()
+        timestamp = dt.datetime.now()
+        buf.append(self._device.get_buffer())
+        lg.logger.info(f'{TAB1}Snaped in {toc(t_start):5,.2f} sec')
+
+        t_start = tic()
+
+        # Extract raw data and metadata
+        # The buffer contains Mono16 data (16 bits per pixel, split into two bytes)
+        # Each pixel is 2 bytes (uint16), so total bytes should be width * height * 2
+
+        # Get the raw bytes
+        raw_bytes = bytes(buf[-1].data)
+
+        # Calculate expected image shape
+        width = buf[-1].width
+        height = buf[-1].height
+        num_pixels = width * height
+
+        # Convert to numpy array of uint16 (little-endian)
+        if PIXEL_FORMAT is PixelFormat.Mono16:
+            img_data = np.frombuffer(raw_bytes, dtype='<u2', count=num_pixels).reshape(height, width)
+        else:
+            img_data = np.frombuffer(raw_bytes, dtype=np.uint8, count=num_pixels).reshape(height, width)
+        meta = self.get_meta(timestamp)
+
+        # Save RAW image as a TIF
+        img_path = os.path.join(SAVE_DIR, self.timestamp, f"image{count}.{IMG_EXT}")
+        cio.save_image(img_path, img_data, meta=meta)
+        lg.logger.debug(f'{TAB2}in {toc(t_start):.2f} sec: {os.path.abspath(img_path)}')
+
+        # Requeue image buffer
+        for buffer in buf:
+            self._device.requeue_buffer(buffer)
+
+        return meta
+
+    def trigger_software_once_armed(self):
+        trigger_armed = False
+
+        while not trigger_armed:
+            trigger_armed = bool(self.nodes['TriggerArmed'].value)
+
+        self.nodes['TriggerSoftware'].execute()
+
+    def get_meta(self, timestamp):
+        meta = {}
+
+        # Save device info
+        meta['CameraMaker'] = self.nodes['DeviceVendorName'].value
+        meta['CameraModel'] = self.nodes['DeviceModelName'].value
+        meta['CameraSerialNumber'] = str(self.nodes['DeviceSerialNumber'].value)
+        meta['CameraBrightness'] = self.nodes['TargetBrightness'].value
+        meta['CameraTemperature'] = self.nodes['DeviceTemperature'].value
+
+        # Lens info
+        meta['LensMaker'] = 'Fujifilm'
+        meta['LensModel'] = 'FE185C057HA-1'
+        meta['FNumber'] = FNUMBER
+        meta['FocalLength'] = FOCAL_LENGTH
+
+        # Store the exposure time (in seconds)
+        meta['ExposureTime'] = self.nodes['ExposureTime'].value * 1e-6
+        # Store the gain as equivalent ISO rating (reducing precision to 1%)
+        meta['ISOSpeedRatings'] = int(np.round(100 * (10 ** (self.nodes['Gain'].value / 10)) ** 0.5))
+        # Store the timestamp
+        meta['DateTime'] = timestamp.strftime(r"%Y:%m:%d %H:%M:%S")
+
+        meta['Latitude'] = cio.LATITUDE
+        meta['Longitude'] = cio.LONGITUDE
+        meta['Altitude'] = cio.ALTITUDE
+
+        return meta
+
+    def _store_initial(self):
+        '''
+        Store initial node values, return their values at the end
+        '''
+        initials = {}
+        for key in SETTINGS_KEYS:
+            if key not in self.nodes.keys():
+                lg.logger.warning(f'{TAB1}{key} does not exist in NodeMap.')
+            elif hasattr(self.nodes[key], 'value'):
+                lg.logger.debug(f'{TAB1}Store initial setting: {key} = {self.nodes[key].value}')
+                initials[key] = self.nodes[key].value
+            else:
+                lg.logger.debug(f'{TAB1}Store initial setting: {key} has no value')
+
+        return initials
+
+    def _restore_initial(self):
+        '''
+        Restore initial node values, return their values at the end
+        '''
+        for key in self._initial_settings.keys():
+            if key in RESTORE_EXEMPT:
+                lg.logger.debug(f'{TAB1}Exempt from restoring: {key}')
+                continue
+
+            try:
+                if hasattr(self.nodes[key], 'value'):
+                    initial_node = self.nodes[key].value
+                    lg.logger.debug(
+                        f'{TAB1}Restoring initial setting: {key} from {initial_node} to {self._initial_settings[key]}')
+                    self.nodes[key].value = self._initial_settings[key]
+                    lg.logger.debug(f'{key} restored initial setting: {initial_node} --> {self._initial_settings[key]}')
+                else:
+                    lg.logger.debug(f'{key} has no value, cannot be restored!')
+            except Exception:
+                lg.logger.warning(f'{key} could not be restored!')
+                lg.logger.warning(f'{TAB1}Attempted to change {self.nodes[key].value} to {self._initial_settings[key]}')
+
+    def __del__(self):
+        # Clean up ------------------------------------------------
+
+        # Restore initial settings
+        lg.logger.debug(f'{TAB1}Restoring initial settings')
+        self._restore_initial()
+
+        # Destroy all created devices. This call is optional and will automatically be called for any remaining devices when the system module is unloading.
+        system.destroy_device()
+        lg.logger.debug(f'{TAB1}Destroyed all created devices')
+
+
+class HDRCamera(Camera):
     def __call__(self, *exposures):
         lg.logger.info('Acquire HDR images example started')
     
@@ -149,153 +354,6 @@ class HDRCamera:
         t_end = toc(t_start)
         lg.logger.success(f'{TAB1}Acquired and saved {len(exposures)} images in {t_end:.3f} sec')
         lg.logger.success(f'{TAB1}Location: {session_dir}')
-
-    def acquire_and_save_buffer(self, exposure, count=0):
-        # Set frame rate
-        min_frame_rate = self.nodes['AcquisitionFrameRate'].min
-        max_frame_rate = self.nodes['AcquisitionFrameRate'].max
-        frame_rate = np.clip(1e6 / exposure, min_frame_rate, max_frame_rate)
-        self.nodes['AcquisitionFrameRate'].value = frame_rate
-        lg.logger.debug(f'{TAB2}Set frame rate at  = {frame_rate:.2f} Hz')
-        
-        if exposure > self.nodes['ExposureTime'].max or exposure < self.nodes['ExposureTime'].min:
-            lg.logger.debug(f'{TAB2}Exposure time should be in range {self.nodes["ExposureTime"].min} - {self.nodes["ExposureTime"].max} us, '
-                              f'but got {exposure} us.')
-            exposure = np.clip(exposure, self.nodes['ExposureTime'].min, self.nodes['ExposureTime'].max)
-            lg.logger.debug(f'{TAB2}Set exposure at    = {exposure/1e6:.2f} sec')
-            
-        # Set exposure time 
-        lg.logger.info(f'Getting image {count+1} with exposure time {exposure * 1e-6:9,.6f} sec')
-        self.nodes['ExposureTime'].value = exposure
-
-        t_start = tic()
-        
-        # after the exposure time is set, the setting does not take place on the device until the next frame.
-        # thus, two images are retrieved, and we use the second one.
-        buf = [None, None]
-        timestamp = None
-        for i in range(2):
-            self.trigger_software_once_armed()
-            timestamp = dt.datetime.now()
-            buf[i] = self._device.get_buffer()
-        lg.logger.info(f'{TAB1}Snaped in {toc(t_start):5,.2f} sec')
-        
-        t_start = tic()
-
-        # Extract raw data and metadate
-        # The buffer contains Mono16 data (16 bits per pixel, split into two bytes)
-        # Each pixel is 2 bytes (uint16), so total bytes should be width * height * 2
-
-        # Get the raw bytes
-        raw_bytes = bytes(buf[-1].data)
-
-        # Calculate expected image shape
-        width = buf[-1].width
-        height = buf[-1].height
-        num_pixels = width * height
-
-        # Convert to numpy array of uint16 (little-endian)
-        if PIXEL_FORMAT is PixelFormat.Mono16:
-            img_data = np.frombuffer(raw_bytes, dtype='<u2', count=num_pixels).reshape(height, width)
-        else:
-            img_data = np.frombuffer(raw_bytes, dtype=np.uint8, count=num_pixels).reshape(height, width)
-        meta = self.get_meta(timestamp)
-
-        # Save RAW image as a TIF
-        img_path = os.path.join(SAVE_DIR, self.timestamp, f"image{count}.{IMG_EXT}")
-        cio.save_image(img_path, img_data, meta=meta)
-        lg.logger.debug(f'{TAB2}in {toc(t_start):.2f} sec: {os.path.abspath(img_path)}')
-
-        # Requeue image buffer
-        for buffer in buf:
-            self._device.requeue_buffer(buffer)
-
-        return meta
-    
-    def trigger_software_once_armed(self):
-        trigger_armed = False
-
-        while not trigger_armed:
-            trigger_armed = bool(self.nodes['TriggerArmed'].value)
-        
-        self.nodes['TriggerSoftware'].execute()
-
-    def get_meta(self, timestamp):
-        meta = {}
-
-        # Save device info
-        meta['CameraMaker'] = self.nodes['DeviceVendorName'].value
-        meta['CameraModel'] = self.nodes['DeviceModelName'].value
-        meta['CameraSerialNumber'] = str(self.nodes['DeviceSerialNumber'].value)
-        meta['CameraBrightness'] = self.nodes['TargetBrightness'].value
-        meta['CameraTemperature'] = self.nodes['DeviceTemperature'].value
-        
-        # Lens info
-        meta['LensMaker'] = 'Fujifilm'
-        meta['LensModel'] = 'FE185C057HA-1'
-        meta['FNumber'] = FNUMBER
-        meta['FocalLength'] = FOCAL_LENGTH
-
-        # Store the exposure time (in seconds)
-        meta['ExposureTime'] = self.nodes['ExposureTime'].value*1e-6
-        # Store the gain as equivalent ISO rating (reducing precision to 1%)
-        meta['ISOSpeedRatings'] = int(np.round(100*(10**(self.nodes['Gain'].value/10))**0.5))
-        # Store the timestamp
-        meta['DateTime'] = timestamp.strftime(r"%Y:%m:%d %H:%M:%S")
-        
-        meta['Latitude'] = cio.LATITUDE
-        meta['Longitude'] = cio.LONGITUDE
-        meta['Altitude'] = cio.ALTITUDE
-        
-        return meta
-
-    def _store_initial(self):
-        '''
-        Store initial node values, return their values at the end
-        '''
-        initials = {}
-        for key in SETTINGS_KEYS:
-            if key not in self.nodes.keys():
-                lg.logger.warning(f'{TAB1}{key} does not exist in NodeMap.')
-            elif hasattr(self.nodes[key], 'value'):
-                lg.logger.debug(f'{TAB1}Store initial setting: {key} = {self.nodes[key].value}')
-                initials[key] = self.nodes[key].value
-            else:
-                lg.logger.debug(f'{TAB1}Store initial setting: {key} has no value')
-
-        return initials
-    
-    def _restore_initial(self):
-        '''
-        Restore initial node values, return their values at the end
-        '''
-        for key in self._initial_settings.keys():
-            if key in RESTORE_EXEMPT:
-                lg.logger.debug(f'{TAB1}Exempt from restoring: {key}')
-                continue
-
-            try:
-                if hasattr(self.nodes[key], 'value'):
-                    initial_node = self.nodes[key].value
-                    lg.logger.debug(f'{TAB1}Restoring initial setting: {key} from {initial_node} to {self._initial_settings[key]}')
-                    self.nodes[key].value = self._initial_settings[key]
-                    lg.logger.debug(f'{key} restored initial setting: {initial_node} --> {self._initial_settings[key]}')
-                else:
-                    lg.logger.debug(f'{key} has no value, cannot be restored!')
-            except Exception:
-                lg.logger.warning(f'{key} could not be restored!')
-                lg.logger.warning(f'{TAB1}Attempted to change {self.nodes[key].value} to {self._initial_settings[key]}')
-
-    def __del__(self):
-        # Clean up ------------------------------------------------
-
-        # Restore initial settings
-        lg.logger.debug(f'{TAB1}Restoring initial settings')
-        self._restore_initial()
-
-        # Destroy all created devices. This call is optional and will automatically be called for any remaining devices when the system module is unloading.
-        system.destroy_device()
-        lg.logger.debug(f'{TAB1}Destroyed all created devices')
 
 
 STEP_SIZE = cio.config['default_step_size']
