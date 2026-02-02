@@ -33,7 +33,7 @@ parser.add_argument('-ie', '--image-extension',
                          f' jpeg, jpg, bmp, raw, ply, tiff, png; default is "{camera.IMG_EXT}"')
 parser.add_argument('-sd', '--save-directory',
                     help=f'set the directory where to save the images; default is in "{camera.SAVE_DIR}"')
-parser.add_argument('-tr', '--transform-images',
+parser.add_argument('-tr', '--transform-images', action='store_true',
                     help=f'flag to transform all the images')
 
 
