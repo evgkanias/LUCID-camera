@@ -98,11 +98,7 @@ if __name__ == '__main__':
                 img_pol[ang] = trans.demosaic_bayer_malvar(img_pol[ang])
 
             stokes = trans.get_stokes(img_pol)
-            for st in stokes:
-                s_norm = cv2.normalize(stokes[st], None, 0, 65535, cv2.NORM_MINMAX)
-                st16 = np.nan_to_num(s_norm, nan=0).astype(np.uint16)
-                cio.save_image(os.path.join(session_dir, f'image_{pol_ang}_{st}.tiff'), st16, meta=meta)
-
+            
             # Angle and degree of polarisation per channel
             angle = trans.get_polarisation_angle(stokes)
             angle_deg = np.degrees(angle)
