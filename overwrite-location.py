@@ -59,17 +59,28 @@ def main(directory, longitude, latitude, altitude):
     if not base_names:
         lg.logger.error(f"No valid base names found in {dir_}")
 
+    mata_path = os.path.join(dir_, 'info.txt')
+    with open(mata_path, 'r') as f:
+        info = yaml.safe_load(f)
+    
     images, metas, files = cio.read_raw_images(dir_)
     for img, meta, file_ in zip(images, metas, files):
         if longitude is not None:
+            info[file_[:-5]]['Longitude'] = longitude
             meta['Longitude'] = longitude
         if latitude is not None:
+            info[file_[:-5]]['Latitude'] = latitude
             meta['Latitude'] = latitude
         if altitude is not None:
+            info[file_[:-5]]['Altitude'] = altitude
             meta['Altitude'] = altitude
 
         path = os.path.join(dir_, file_)
-        cio.save_image(img, path, meta)
+        cio.save_image(path, img, meta)
+    
+    with open(mata_path, 'w') as f:
+        yaml.safe_dump(info, f)
+
     lg.logger.success(f"All location metadata have been replaced in in {dir_}")
 
 
@@ -108,7 +119,7 @@ if __name__ == "__main__":
     lg.logger.remove()
     lg.logger.add(sys.stderr, level=args.print_level.upper(), colorize=True, backtrace=True, diagnose=True)
     lg.logger.add(LOG_FILE, level=args.print_level.upper(), colorize=False, backtrace=True, diagnose=True)
-    lg.logger.disable('camera.io')
+    # lg.logger.disable('camera.io')
 
     if args.known_location is not None:
         lon = KNOWN_LOCATIONS[args.known_location]['lon']
@@ -121,7 +132,7 @@ if __name__ == "__main__":
         lg.logger.error("Please specify a location to overwrite.")
         sys.exit(1)
 
-    if len(args.session) > 0:
+    if len(args.sessions) > 0:
         for session in args.sessions:
             main(session, lon, lat, alt)
     else:

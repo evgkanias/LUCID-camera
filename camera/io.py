@@ -84,7 +84,7 @@ def read_raw_images(directory):
 def read_raw_image(img_path):
     # transform to real number
     pil_img = Image.open(img_path)
-    assert pil_img.mode in ['I;16', 'L'], f'Image mode is {pil_img.mode}, expected single channel image.'
+    assert pil_img.mode in ['I;16', 'L', 'F'], f'Image mode is {pil_img.mode}, expected single channel image.'
 
     # check image mode
     if pil_img.mode == 'I;16':
@@ -93,6 +93,9 @@ def read_raw_image(img_path):
     elif pil_img.mode == 'L':
         dtype = np.float32
         max_val = 255.0
+    elif pil_img.mode == 'F':
+        dtype = np.float64
+        max_val = 1.0
 
     img = np.array(Image.open(img_path), dtype=dtype) / max_val
 
