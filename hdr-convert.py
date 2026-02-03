@@ -99,8 +99,11 @@ def main(directory=None, overwrite=False, yes_to_all=False):
         hdr = {}
         for ang in img_pol:
             # HDR merge
+            imgs = [np.uint8(img * 255) for img in img_pol[ang]]
+            calibrate = cv2.createCalibrateDebevec()
+            response = calibrate.process(imgs, times=exposures)
             merge_debevec = cv2.createMergeDebevec()
-            hdr_ = merge_debevec.process([np.uint8(img * 255) for img in img_pol[ang]], times=exposures.copy())
+            hdr_ = merge_debevec.process(imgs, exposures.copy(), response)
             lg.logger.debug("Generated HDR image.")
             
             # LDR and gamma correction
