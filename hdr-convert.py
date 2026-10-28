@@ -88,7 +88,7 @@ def main(directory=None, overwrite=False, yes_to_all=False):
             img_pol_ = trans.demosaic_polarisation(image)
             for ang in img_pol_:
                 # Extact RGB from polarisation images
-                img_pol_rgb = trans.demosaic_bayer_malvar(img_pol_[ang])
+                img_pol_rgb = trans.demosaic_bayer_simple(img_pol_[ang])
                 img_pol[ang].append(img_pol_rgb)
 
         exposures = np.array([meta['ExposureTime'] for meta in metas], dtype=np.float32)
