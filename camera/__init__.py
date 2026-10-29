@@ -145,6 +145,82 @@ class Camera:
         lg.logger.success(f'{TAB1}Location: {session_dir}')
 
     def acquire_and_save_buffer(self, exposure, identity=None):
+        """
+        Set the exposure time, trigger the camera once, retrieve the image,
+        and save it.
+
+        Parameters
+        ----------
+        exposure : float
+            Exposure time in microseconds.
+        identity : int
+            Index of the image within the current acquisition session.
+
+        Returns
+        -------
+        dict
+            Metadata describing the acquired image.
+        """
+        if identity is None:
+            identity = ""
+        elif isinstance(identity, int):
+            identity = f"{identity}"
+        else:
+            identity = f"{identity}"
+
+        # Ensure manual exposure control.
+        if self.nodes["ExposureAuto"].value != "Off":
+            lg.logger.debug(f'ExposureAuto old value = {self.nodes["ExposureAuto"].value}')
+            self.nodes["ExposureAuto"].value = "Off"
+
+        # Arena applies the new exposure value to the next triggered frame.
+        lg.logger.info(f'Getting image {identity} with exposure time {exposure * 1e-6:9,.6f} sec')
+        self.nodes["ExposureTime"].value = float(exposure)
+
+        t_start = tic()
+
+        # Trigger exactly once: this both applies the setting and captures the next image.
+        self.trigger_software_once_armed()
+        timestamp = dt.datetime.now()
+        buf = self._device.get_buffer()
+        lg.logger.info(f'{TAB1}Snapped in {toc(t_start):5,.2f} sec')
+
+        t_start = tic()
+
+        try:
+            raw_bytes = bytes(buf.data)
+            width = buf.width
+            height = buf.height
+            nb_pixels = width * height
+
+            if PIXEL_FORMAT is PixelFormat.Mono16:
+                img = np.frombuffer(
+                    raw_bytes,
+                    dtype="<u2",
+                    count=nb_pixels,
+                ).reshape(height, width).copy()
+            else:
+                img = np.frombuffer(
+                    raw_bytes,
+                    dtype=np.uint8,
+                    count=nb_pixels,
+                ).reshape(height, width).copy()
+
+            meta = self.get_meta(timestamp)
+            # meta["ExposureTime"] = float(exposure) * 1e-6
+
+            if identity != "":
+                identity = f"_{identity}"
+            image_path = os.path.join(SAVE_DIR, self.timestamp, f"image{identity}.{IMG_EXT}")
+            cio.save_image(image_path, img, meta=meta)
+            lg.logger.debug(f'{TAB2}in {toc(t_start):.2f} sec: {os.path.abspath(image_path)}')
+
+            return meta
+
+        finally:
+            self._device.requeue_buffer(buf)
+
+    def acquire_and_save_buffer_old(self, exposure, identity=None):
         buf = []
         if identity is None:
             identity = ""
@@ -182,7 +258,7 @@ class Camera:
         self.trigger_software_once_armed()
         timestamp = dt.datetime.now()
         buf.append(self._device.get_buffer())
-        lg.logger.info(f'{TAB1}Snaped in {toc(t_start):5,.2f} sec')
+        lg.logger.info(f'{TAB1}Snapped in {toc(t_start):5,.2f} sec')
 
         t_start = tic()
 

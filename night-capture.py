@@ -40,8 +40,8 @@ parser.add_argument(
 )
 parser.add_argument(
     "-m", "--stack-method",
-    choices=["mean", "median", "sigma"],
-    default="sigma",
+    choices=["sum", "mean", "median", "sigma"],
+    default="sum",
     help="frame-combination method; sigma clipping removes satellite trails",
 )
 parser.add_argument(
@@ -82,9 +82,14 @@ if args.save_directory is not None:
     lg.logger.info(f"Save directory: {camera.SAVE_DIR}")
 
 cam = NightCamera()
+input("Setting up the dark frame. Place the lid on the lens and press enter.")
+dark_frame = cam(total_exposure=10, save=True)
+
+input(f"Starting the long exposure of {args.total_exposure} seconds. Remove the lens's lid and press enter to start.")
 cam(
     total_exposure=args.total_exposure,
     sub_exposure=args.sub_exposure,
     stack_method=args.stack_method,
     sigma=args.sigma,
+    dark_frame=dark_frame
 )
