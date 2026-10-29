@@ -7,7 +7,7 @@ import loguru as lg
 
 import camera
 import camera.io as cio
-from camera.night import NightCamera
+import camera.night as cn
 
 LOG_FILE = os.path.join(
     cio.LOGS_DIR,
@@ -26,8 +26,8 @@ parser = ap.ArgumentParser(
 parser.add_argument(
     "-t", "--total-exposure",
     type=float,
-    default=180.0,
-    help="total effective exposure time in seconds; default: 180",
+    default=cn.DEFAULT_EXPOSURE,
+    help="total effective exposure time in seconds; default: 300",
 )
 parser.add_argument(
     "-s", "--sub-exposure",
@@ -81,7 +81,7 @@ if args.save_directory is not None:
     os.makedirs(camera.SAVE_DIR, exist_ok=True)
     lg.logger.info(f"Save directory: {camera.SAVE_DIR}")
 
-cam = NightCamera()
+cam = cn.NightCamera()
 input("Setting up the dark frame. Place the lid on the lens and press enter.")
 dark_frame = cam(total_exposure=10, save=True)
 

@@ -1,44 +1,43 @@
 # LUCID-camera
 
-A Python package and command-line toolkit for controlling LUCID Vision cameras,
-capturing calibrated images, generating HDR images, and acquiring long night-sky
-exposures by accumulating multiple camera-limited sub-exposures.
+Python tools for controlling LUCID Vision cameras, capturing individual images,
+and acquiring high-dynamic-range (HDR) image brackets.
 
-The package is designed for scientific imaging workflows where raw sensor data,
-exposure metadata, and reproducible acquisition settings are important.
+The package is intended for scientific imaging with polarisation-sensitive
+LUCID cameras. It provides reproducible camera control, raw image acquisition,
+metadata embedding, geolocation-aware logging, and HDR bracket capture.
 
 ## Features
 
-- LUCID Arena-based camera control.
-- Manual and automatic exposure control.
+- LUCID Arena SDK integration.
+- Automatic detection of connected LUCID devices.
 - Software-triggered image acquisition.
-- Mono16 and other supported pixel formats.
-- TIFF image output with EXIF-style metadata.
-- HDR bracketed capture.
+- Manual and automatic exposure control.
+- Support for Mono, Bayer, and polarised pixel formats.
+- TIFF, PNG, JPEG, BMP, and RAW image output.
+- EXIF-style metadata, including camera, lens, exposure, gain, GPS, and
+  timestamp information.
+- Manual HDR bracket capture.
+- Automatic HDR bracket generation around the current auto-exposure value.
+- Periodic HDR acquisition using `hdr-daemon.py`.
 - HDR conversion and tone mapping.
-- Long-exposure night-sky capture using linear frame accumulation.
-- Scheduled image acquisition through daemon scripts.
-- Geolocation-aware metadata through `camera.io`.
 
 ## Repository structure
 
 ```text
 LUCID-camera/
 ├── camera/
-│   ├── __init__.py       # Core Camera class and acquisition logic
-│   ├── io.py             # Configuration, image saving, metadata, and utilities
-│   ├── night.py          # Optional: long-exposure night-sky acquisition
-│   └── transform.py      # Optional: long-exposure night-sky acquisition
-├── config.yaml           # Default camera and HDR settings
-├── hdr-capture.py        # Capture an HDR bracket sequence
-├── hdr-daemon.py         # Repeatedly capture HDR brackets
-├── hdr-convert.py        # Convert HDR brackets into an HDR image
-├── hdr-convert-old.py    # Legacy HDR conversion script
-├── leaf-capture.py       # Single-image capture utility
-├── night-capture.py      # Optional: capture one long night-sky exposure
-├── night-daemon.py       # Optional: repeatedly capture night-sky exposures
-├── known-locations.yaml  # Known capture locations
-└── overwrite-location.py # Utility for correcting location metadata
+│   ├── __init__.py        # Camera, HDRCamera, and HDRCameraAuto classes
+│   ├── night.py           # NightCamera classes
+│   └── io.py              # Configuration, image saving, metadata, and utilities
+├── config.yaml            # Default camera, HDR, and conversion settings
+├── hdr-capture.py         # Capture an HDR bracket
+├── hdr-daemon.py          # Repeatedly capture HDR brackets
+├── hdr-convert.py         # Convert an HDR bracket into an HDR image
+├── hdr-convert-old.py     # Legacy HDR conversion script
+├── leaf-capture.py        # Capture a single image
+├── known-locations.yaml   # Known capture locations
+└── overwrite-location.py  # Correct location metadata in existing images
 ```
 
 ## Requirements
@@ -46,19 +45,34 @@ LUCID-camera/
 - Python 3.8 or later
 - LUCID Arena SDK
 - A supported LUCID Vision camera
-- Required Python packages:
+- Python dependencies:
 
 ```bash
 pip install numpy pillow loguru pyyaml piexif geocoder requests
 ```
 
-Install the LUCID Arena SDK from
-[LUCID Vision Labs](https://thinklucid.com/downloads-hub/).
-The Python `arena_api` package must be able to detect the connected camera.
+Install the LUCID Arena SDK from the
+[LUCID Vision Labs downloads page](https://thinklucid.com/downloads-hub/).
+The Python `arena_api` package must be installed and able to detect the camera.
+
+## Installation
+
+Clone the repository:
+
+```bash
+git clone [https://github.com/evgkanias/LUCID-camera.git](https://github.com/evgkanias/LUCID-camera.git)
+cd LUCID-camera
+```
+
+Install the Python dependencies:
+
+```bash
+pip install -r requirements.txt
+```
 
 ## Configuration
 
-Camera defaults are read from `config.yaml`.
+Default settings are read from `config.yaml`.
 
 ```yaml
 camera:
@@ -74,242 +88,376 @@ convert:
 daemon:
   intervals: 600
 
+night:
+  exposures_s: 300  # 5 min
+
 default_exposures:
   - 3000.0
   - 300.0
   - 30.0
 ```
 
-### Important settings
+### Main settings
 
 | Setting | Description |
 |---|---|
-| `camera.exposure_type` | Default exposure mode, such as `auto` or `manual`. |
-| `camera.pixel_format` | Camera pixel format, typically `Mono16` for scientific imaging. |
-| `camera.target_brightness` | Target brightness used by automatic exposure routines. |
-| `convert.gamma` | Gamma applied during HDR conversion. |
-| `daemon.intervals` | Default delay between daemon captures, in seconds. |
-| `default_exposures` | Exposure bracket used by the HDR capture scripts, in milliseconds. |
+| `camera.exposure_type` | `auto` uses `HDRCameraAuto`; `manual` uses `HDRCamera`. |
+| `camera.pixel_format` | Camera pixel format, e.g. `Mono16`. |
+| `camera.target_brightness` | Target brightness used by automatic exposure. |
+| `camera.f_number` | Lens f-number stored in image metadata. |
+| `camera.focal_length` | Lens focal length stored in image metadata. |
+| `convert.gamma` | Gamma value used during HDR conversion. |
+| `daemon.intervals` | Delay between daemon captures, in seconds. |
+| `default_exposures` | Default HDR exposure bracket, in milliseconds. |
+| `default_step_size` | Exposure spacing used by automatic HDR capture. |
+| `default_nb_exposures` | Number of exposures used by automatic HDR capture. |
 
-## HDR imaging
+## Capturing a single image
 
-### Capture an HDR bracket
+Use `leaf-capture.py` to acquire one image:
+
+```bash
+python leaf-capture.py
+```
+
+To specify an exposure time in seconds:
+
+```bash
+python leaf-capture.py -e 0.1
+```
+
+The resulting image is saved in a timestamped session directory under the
+configured image directory.
+
+## HDR capture
+
+### Manual HDR bracket
+
+`HDRCamera` captures a user-defined set of exposures, sorted from longest to
+shortest.
+
+```bash
+python hdr-capture.py -e 3.0 0.3 0.03
+```
+
+Exposures are given in **milliseconds**. The command above captures:
+
+```text
+3.000 s
+0.300 s
+0.030 s
+```
+
+To use the exposures defined in `config.yaml`:
 
 ```bash
 python hdr-capture.py
 ```
 
-This captures a sequence of images using the exposure bracket defined in
-`config.yaml`. The resulting images are saved as TIFF files with acquisition
-metadata.
+### Automatic HDR bracket
 
-### Capture HDR images periodically
+`HDRCameraAuto` measures the current auto-exposure value and creates a
+symmetrical exposure bracket around it.
+
+```bash
+python hdr-capture.py
+```
+
+Customise the bracket with:
+
+```bash
+python hdr-capture.py -s 2 -n 5
+```
+
+| Option | Description |
+|---|---|
+| `-s`, `--step-size` | Relative exposure spacing. |
+| `-n`, `--number-exposures` | Total number of exposures in the bracket. |
+| `-e`, `--exposures` | Optional explicit exposure list, in milliseconds. |
+
+For example, with a measured exposure of 0.1 s, a step size of 2, and five
+exposures, the bracket contains exposures above and below the measured value,
+including the measured exposure itself.
+
+### Periodic HDR capture
 
 ```bash
 python hdr-daemon.py
 ```
 
-The daemon repeatedly captures HDR brackets. The interval between captures is
-controlled by the `daemon.intervals` setting or the script’s command-line
-arguments.
+The daemon repeatedly captures HDR brackets using the configured interval. It
+is useful for time-lapse HDR acquisition or long-term monitoring.
 
-### Convert captured brackets
+## HDR conversion
+
+After capturing a bracket, convert it into an HDR image:
 
 ```bash
 python hdr-convert.py
 ```
 
-This combines the captured exposure bracket into an HDR image using the
-configured gamma value.
+The conversion uses the gamma value defined in `config.yaml`.
 
-## Night-sky long exposure
+## Camera classes
 
-Most machine-vision cameras limit a single exposure to a few seconds. The
-night-capture feature approximates a much longer exposure by capturing several
-maximum-length sub-exposures and **summing their raw pixel values**.
+### `Camera`
 
-For example, a camera limited to 10 s per exposure can approximate a 180 s
-exposure by capturing:
-
-```text
-18 frames × 10 s = 180 s effective exposure
-```
-
-The frames are accumulated linearly rather than averaged:
-
-\[
-I_{\text{night}} = \sum_{i=1}^{N} I_i
-\]
-
-For a linear sensor, this approximates the signal that would be collected in a
-single exposure of duration \(Nt\), where \(t\) is the individual sub-exposure
-duration.
-
-### Output format
-
-The final night image is saved as a **32-bit single-channel float TIFF**
-(`mode='F'`). This avoids clipping bright stars or the Milky Way, because the
-accumulated signal can exceed the 16-bit maximum of 65,535.
-
-For example, 18 saturated 16-bit frames can produce values up to:
-
-```text
-18 × 65,535 = 1,179,630
-```
-
-The float TIFF preserves this full accumulated range. An optional 16-bit
-preview can also be generated for quick visual inspection.
-
-### Capture one night image
-
-```bash
-# 3-minute effective exposure using the camera maximum sub-exposure
-python night-capture.py -t 180
-
-# 5-minute effective exposure
-python night-capture.py -t 300
-
-# 2-minute effective exposure using 8 s sub-exposures
-python night-capture.py -t 120 -s 8
-```
-
-### Command-line options
-
-| Option | Description | Default |
-|---|---|---|
-| `-t`, `--total-exposure` | Total effective exposure time in seconds. | `180` |
-| `-s`, `--sub-exposure` | Individual exposure duration in seconds. | Camera maximum |
-| `-sd`, `--save-directory` | Directory in which to save the session. | Repository default |
-| `-pf`, `--pixel-format` | Camera pixel format, e.g. `Mono16`. | Config value |
-| `-pl`, `--print-level` | Logging level. | `INFO` |
-
-### Repeated night capture
-
-```bash
-# One 3-minute night image every hour
-python night-daemon.py -t 180 -i 3600
-
-# One 5-minute night image every 30 minutes
-python night-daemon.py -t 300 -i 1800
-```
-
-The daemon continues until `exit` or `quit` is entered in the terminal.
-
-## Python API
-
-### Standard camera capture
+`Camera` is the base class for all acquisition modes.
 
 ```python
 import camera
 
 cam = camera.Camera()
-cam()
+
+# Capture one image with a 100 ms exposure.
+cam(exposure=0.1)
 ```
 
-### Night-sky capture
+The class:
+
+- Detects and connects to a LUCID device.
+- Stores the initial camera settings.
+- Configures software triggering.
+- Disables automatic white balance.
+- Acquires and saves images.
+- Restores the initial settings when the object is deleted.
+
+### `HDRCamera`
+
+`HDRCamera` captures a bracket of manually specified exposures.
 
 ```python
-from camera.night import NightCamera
+import camera
 
-cam = NightCamera()
+cam = camera.HDRCamera()
 
-# Approximate a 180 s exposure using 10 s sub-exposures.
-cam(
-    total_exposure=180.0,
-    sub_exposure=10.0,
-)
+# Exposure times are given in seconds.
+cam(3.0, 0.3, 0.03)
 ```
 
-The camera’s maximum supported exposure time is read directly from the
-`ExposureTime` node. If `sub_exposure` is omitted, the module uses the
-camera’s maximum allowed exposure.
+The exposures are automatically sorted from longest to shortest before
+acquisition.
 
-### Dark-frame correction
+### `HDRCameraAuto`
 
-If you have a master dark frame with the same dimensions and exposure settings,
-pass it to the night capture call:
+`HDRCameraAuto` estimates the current exposure using the camera’s automatic
+exposure mode and captures a bracket around it.
 
 ```python
-import numpy as np
-from PIL import Image
+import camera
 
-dark = np.asarray(Image.open("master_dark.tiff"), dtype=np.float64)
+cam = camera.HDRCameraAuto()
 
-cam = NightCamera()
-cam(
-    total_exposure=300.0,
-    sub_exposure=10.0,
-    dark_frame=dark,
-)
+# Five exposures around the current auto-exposure value.
+cam(step_size=2, nb_exposures=5)
 ```
 
-The dark frame is multiplied by the number of sub-exposures before subtraction,
-because dark current accumulates over the full effective exposure time.
+You can also provide a reference exposure in seconds:
+
+```python
+cam(0.1, step_size=2, nb_exposures=5)
+```
+
+## Acquisition behaviour
+
+The camera uses software triggering. When the exposure time changes, the
+current implementation triggers the camera twice:
+
+1. The first trigger applies the new exposure setting.
+2. The second trigger captures the image using the updated exposure.
+
+This is implemented in `Camera.acquire_and_save_buffer()`:
+
+```python
+self.trigger_software_once_armed()
+buf.append(self._device.get_buffer())
+
+# The exposure setting takes effect on the next frame.
+self.trigger_software_once_armed()
+buf.append(self._device.get_buffer())
+```
+
+As a result, an HDR bracket with \(N\) exposures requires approximately
+\(2N\) exposure periods.
+
+### Reducing HDR acquisition time
+
+If your camera applies a new `ExposureTime` value to the next triggered frame,
+the first trigger is unnecessary. You can modify
+`Camera.acquire_and_save_buffer()` to use one trigger per image:
+
+```python
+def acquire_and_save_buffer(self, exposure, identity=None):
+    if identity is None:
+        identity = ""
+    elif isinstance(identity, int):
+        identity = f"{identity}"
+    else:
+        identity = f"{identity}"
+
+    if exposure is not None:
+        # Clip exposure to the camera-supported range.
+        exposure = np.clip(
+            exposure,
+            self.nodes["ExposureTime"].min,
+            self.nodes["ExposureTime"].max,
+        )
+
+        # Set a frame rate compatible with the exposure time.
+        min_frame_rate = self.nodes["AcquisitionFrameRate"].min
+        max_frame_rate = self.nodes["AcquisitionFrameRate"].max
+        frame_rate = np.clip(1e6 / exposure, min_frame_rate, max_frame_rate)
+        self.nodes["AcquisitionFrameRate"].value = frame_rate
+
+        # Set the exposure; it applies to the next triggered frame.
+        self.nodes["ExposureTime"].value = exposure
+
+    # Trigger once: capture the next frame with the current settings.
+    self.trigger_software_once_armed()
+    timestamp = dt.datetime.now()
+    buf = self._device.get_buffer()
+
+    raw_bytes = bytes(buf.data)
+    width = buf.width
+    height = buf.height
+    num_pixels = width * height
+
+    if PIXEL_FORMAT is PixelFormat.Mono16:
+        img_data = np.frombuffer(
+            raw_bytes, dtype="<u2", count=num_pixels
+        ).reshape(height, width)
+    else:
+        img_data = np.frombuffer(
+            raw_bytes, dtype=np.uint8, count=num_pixels
+        ).reshape(height, width)
+
+    meta = self.get_meta(timestamp)
+
+    if identity != "":
+        identity = f"_{identity}"
+
+    img_path = os.path.join(
+        SAVE_DIR,
+        self.timestamp,
+        f"image{identity}.{IMG_EXT}",
+    )
+    cio.save_image(img_path, img_data, meta=meta)
+
+    self._device.requeue_buffer(buf)
+
+    return meta
+```
+
+With this change, an HDR bracket of \(N\) exposures requires approximately
+\(N\) exposure periods rather than \(2N\).
+
+| HDR bracket | Current implementation | Single-trigger implementation |
+|---|---:|---:|
+| 3 exposures | ~6 exposure periods | ~3 exposure periods |
+| 5 exposures | ~10 exposure periods | ~5 exposure periods |
+
+If the first image after changing exposure appears to use the previous
+exposure value, retain one discarded warm-up frame per session, immediately
+after starting the stream. Do not place the warm-up inside the exposure loop.
 
 ## Output files
 
 Each acquisition creates a timestamped session directory:
 
 ```text
-images/
-└── 20261028-133000/
-    ├── night_0000.tiff
-    ├── night_0001.tiff
-    ├── ...
-    ├── night_0017.tiff
-    ├── night_180s_float.tiff
-    ├── night_180s_preview.tiff
+images/HDR/
+└── 20261029134200/
+    ├── image_0.tiff
+    ├── image_1.tiff
+    ├── image_2.tiff
     └── metadata.yaml
 ```
 
 | File | Description |
 |---|---|
-| `night_XXXX.tiff` | Individual raw sub-exposure. |
-| `night_XXXs_float.tiff` | Linearly accumulated long-exposure image in float32 format. |
-| `night_XXXs_preview.tiff` | Optional 16-bit display preview. |
-| `metadata.yaml` | Acquisition metadata, including effective exposure and stack method. |
+| `image_0.tiff` | First image in the HDR bracket. |
+| `image_1.tiff` | Second image in the HDR bracket. |
+| `metadata.yaml` | Acquisition metadata for the full session. |
 
-## Recommended night workflow
+The exact image extension depends on the `image.extension` setting in
+`config.yaml` or the `--image-extension` command-line argument.
 
-1. Place the camera on a stable tripod or mount.
-2. Focus manually on a bright star or distant light source.
-3. Set aperture, gain, and white balance before capture.
-4. Take a dark-frame sequence with the lens capped.
-5. Create a master dark frame by averaging the dark frames.
-6. Run `night-capture.py` with the desired effective exposure.
-7. Process the float TIFF in Python, Fiji, or another HDR-aware tool.
+## Metadata
 
-### Example processing
+Each image includes metadata describing the acquisition conditions:
 
-```python
-import numpy as np
-from PIL import Image
+- Camera manufacturer, model, serial number, and temperature.
+- Target brightness.
+- Lens maker, model, f-number, and focal length.
+- Exposure time in seconds.
+- Gain converted to an approximate ISO rating.
+- Acquisition date and time.
+- Latitude, longitude, and altitude.
 
-image = np.asarray(Image.open("night_180s_float.tiff"), dtype=np.float32)
+Location values are obtained through `camera.io` and can be corrected with
+`overwrite-location.py`.
 
-# Simple display normalisation
-display = image / image.max()
-display = np.clip(display ** (1 / 2.2), 0, 1)
+## Command-line options
 
-Image.fromarray((display * 255).astype(np.uint8)).save("night_preview.png")
+### `hdr-capture.py`
+
+| Option | Description |
+|---|---|
+| `-e`, `--exposures` | Explicit HDR exposure list in milliseconds. |
+| `-s`, `--step-size` | Exposure spacing for automatic HDR capture. |
+| `-n`, `--number-exposures` | Number of exposures for automatic HDR capture. |
+| `-pf`, `--pixel-format` | Camera pixel format. |
+| `-ie`, `--image-extension` | Output image format. |
+| `-sd`, `--save-directory` | Directory in which to save images. |
+| `-pl`, `--print-level` | Logging level: `DEBUG`, `INFO`, `WARNING`, or `ERROR`. |
+
+### Common examples
+
+```bash
+# Manual HDR bracket
+python hdr-capture.py -e 3.0 0.3 0.03
+
+# Automatic HDR bracket with five exposures
+python hdr-capture.py -n 5
+
+# Use Mono16 output
+python hdr-capture.py -pf Mono16
+
+# Save TIFF images in a custom directory
+python hdr-capture.py -sd /path/to/output -ie tiff
 ```
 
-## Notes and limitations
+## Troubleshooting
 
-- The night feature assumes a linear sensor response.
-- Gain should remain fixed during a night sequence.
-- Avoid changing focus, aperture, or exposure settings during acquisition.
-- Frame accumulation does not compensate for star trailing; each sub-exposure
-  still has its own motion blur.
-- For long focal lengths or prominent star trailing, reduce the sub-exposure
-  duration.
-- Satellite and aircraft trails are preserved by linear summation, matching the
-  behaviour of a true long exposure.
-- Thermal noise and dark current accumulate with exposure time; dark-frame
-  subtraction is strongly recommended for scientific use.
+### No camera detected
+
+- Connect the camera and wait for it to enumerate.
+- Ensure the LUCID Arena SDK is installed.
+- Check that the camera is not in use by another application.
+- The package retries device detection for up to 60 seconds.
+
+### Exposure time is rejected
+
+The requested exposure is clipped to the range reported by the camera’s
+`ExposureTime` node. The base class defines a nominal maximum of 10 s, but the
+connected camera’s supported range takes precedence.
+
+### HDR images have unexpected exposure
+
+If exposure changes appear to lag by one frame, retain a single warm-up frame
+per acquisition session. This indicates that the camera applies node changes
+on the frame following the setting change.
+
+### Images are too dark or too bright
+
+- Check the lens aperture.
+- Check camera gain.
+- Verify the exposure bracket.
+- For automatic capture, adjust `target_brightness` in `config.yaml`.
 
 ## License
 
 Copyright (c) Evripidis Gkanias.
 
-Add your preferred license text here, for example MIT, BSD-3-Clause, or GPL-3.0.
+Add your preferred license text here, for example MIT, BSD-3-Clause, or
+GPL-3.0.

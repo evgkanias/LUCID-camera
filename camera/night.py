@@ -20,6 +20,7 @@ import loguru as lg
 
 SAVE_DIR = cio.image_dir_join('night')
 MAX_EXPOSURE = 10  # sec
+DEFAULT_EXPOSURE = cio.config["night"]["exposure_s"]
 
 
 class NightCamera(camera.Camera):

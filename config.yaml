@@ -8,6 +8,8 @@ convert:
   gamma: 2.2
 daemon:
   intervals: 600
+night:
+  exposure_s: 300
 default_exposures:
 - 3000.0
 - 300.0
