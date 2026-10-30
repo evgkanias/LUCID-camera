@@ -18,7 +18,7 @@ import datetime as dt
 import numpy as np
 import loguru as lg
 
-SAVE_DIR = cio.image_dir_join('night')
+SAVE_DIR = cio.image_dir_join('Night')
 MAX_EXPOSURE = 10  # sec
 DEFAULT_EXPOSURE = cio.config["night"]["exposure_s"]
 
@@ -86,7 +86,7 @@ class NightCamera(camera.Camera):
             sub_exposure = sub_exposure_us * 1e-6
 
         self.nodes['ExposureTime'].value = sub_exposure_us
-        lg.logger.debug(f'  Set exposure at    = {self.nodes["ExposureTime"].value * 1e-6:.2f} sec')
+        lg.logger.info(f'  Set exposure at    = {self.nodes["ExposureTime"].value * 1e-6:.2f} sec')
 
         nb_frames = max(1, int(round(total_exposure / sub_exposure)))
         effective_exposure = nb_frames * sub_exposure

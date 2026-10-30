@@ -144,7 +144,7 @@ class Camera:
         lg.logger.success(f'{TAB1}Acquired and saved an image in {t_end:.3f} sec')
         lg.logger.success(f'{TAB1}Location: {session_dir}')
 
-    def acquire_and_save_buffer(self, exposure, identity=None):
+    def acquire_and_save_buffer_new(self, exposure, identity=None):
         """
         Set the exposure time, trigger the camera once, retrieve the image,
         and save it.
@@ -220,7 +220,7 @@ class Camera:
         finally:
             self._device.requeue_buffer(buf)
 
-    def acquire_and_save_buffer_old(self, exposure, identity=None):
+    def acquire_and_save_buffer(self, exposure, identity=None):
         buf = []
         if identity is None:
             identity = ""
@@ -298,7 +298,10 @@ class Camera:
         trigger_armed = False
 
         while not trigger_armed:
-            trigger_armed = bool(self.nodes['TriggerArmed'].value)
+            try:
+                trigger_armed = bool(self.nodes['TriggerArmed'].value)
+            except TimeoutError:
+                lg.logger.exception('Failed to trigger armed trigger')
 
         self.nodes['TriggerSoftware'].execute()
 
